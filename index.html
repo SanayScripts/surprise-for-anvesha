@@ -117,7 +117,7 @@
 <div><b>Arrows or WASD</b><span>steer the ship</span></div>
 <div><b>Space</b><span>barrel roll (deflects turret bolts)</span></div>
 <div><b>Space, in the final run-up</b><span>fire the torpedo at the vent</span></div>
-<div><b>Enter</b><span>skip the crawl or the approach (after 4 s), advance a line</span></div>
+<div><b>Enter / Space</b><span>skip the crawl or the approach (after 4 s); Enter also advances a line</span></div>
 <div><b>Space (boss fight)</b><span>hold 3 s to lock on, tap to fire a missile. Lock needs a clear view.</span></div>
 <div><b>Esc</b><span>pause: resume, calm mode, restart, mute, test mode</span></div>
 </div>
@@ -884,6 +884,10 @@ addEventListener('keydown', e => {
     else if (phase === 'approach' && approachT >= CFG.skipAfter) endApproach();
     return;
   }
+  if (e.code === 'Space' && !e.repeat && !paused && !cur) {    // Space skips the crawl or the approach too
+    if (phase === 'crawl' && crawlT >= CFG.skipAfter) { e.preventDefault(); endCrawl(true); return; }
+    if (phase === 'approach' && approachT >= CFG.skipAfter) { e.preventDefault(); endApproach(); return; }
+  }
   if (e.code === 'Space') { e.preventDefault(); if (phase === 'final') fire(); else if (phase === 'boss') { if (!e.repeat) bossSpace(); } else if (phase !== 'approach' && phase !== 'title') tryRoll(); }
   if (e.code === 'Escape' && started && !dead && phase !== 'title' && phase !== 'win') { togglePause(); return; }
   if (paused && !e.repeat) {                                      // the pause menu: one key each
@@ -1050,6 +1054,7 @@ function cutBgm() {
 function endCrawl(skipped) {
   crawlWrap.style.display = 'none';
   say('');
+  if (skipped) cutBgm(); else fadeBgm(3);                // the title theme stops; the approach is silent until the surface
   SFX.jump();
   ds.visible = true;
   phase = 'approach';
@@ -1099,7 +1104,7 @@ function approachUpdate(dt) {
 
   hud.textContent = '';
   commUpdate(dt);
-  if (approachT >= CFG.skipAfter && msgEl.style.display !== 'block') { say('space or click to skip'); msgEl.classList.add('hint'); }
+  if (approachT >= CFG.skipAfter && msgEl.style.display !== 'block') { say('Enter or Space to skip'); msgEl.classList.add('hint'); }
   if (approachT >= CFG.approachSec && qIdx >= queue.length && !cur) endApproach();
 }
 
@@ -2196,7 +2201,7 @@ function update(dt) {
   if (phase === 'crawl') {
     crawlT += dt;
     crawlUpdate(crawlT);
-    if (crawlT >= CFG.skipAfter && msgEl.style.display !== 'block') { say('space or click to skip'); msgEl.classList.add('hint'); }
+    if (crawlT >= CFG.skipAfter && msgEl.style.display !== 'block') { say('Enter or Space to skip'); msgEl.classList.add('hint'); }
     if (crawlT >= CFG.crawlSec) endCrawl();
     return;
   }
