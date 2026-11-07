@@ -891,7 +891,7 @@ addEventListener('keydown', e => {
     if (phase === 'crawl' && crawlT >= CFG.skipAfter) { e.preventDefault(); pending.length = 0; closeComm(); endCrawl(true); return; }
     if (phase === 'approach' && approachT >= CFG.skipAfter) { e.preventDefault(); pending.length = 0; endApproach(); return; }
   }
-  if (e.code === 'Space') { e.preventDefault(); if (phase === 'final') fire(); else if (phase === 'boss') { if (!e.repeat) bossSpace(); } else if (phase !== 'approach' && phase !== 'title') tryRoll(); }
+  if (e.code === 'Space') { e.preventDefault(); if (phase === 'final') { if (!e.repeat) fire(); } else if (phase === 'boss') { if (!e.repeat) bossSpace(); } else if (phase !== 'approach' && phase !== 'title') tryRoll(); }
   if (e.code === 'Escape' && started && !dead && phase !== 'title' && phase !== 'win') { togglePause(); return; }
   if (paused && !e.repeat) {                                      // the pause menu: one key each
     if (e.code === 'KeyC') toggleCalm();
@@ -1126,7 +1126,7 @@ function endApproach() {
   SFX.whoosh();
   closeComm();
   startSurface();
-  for (const { g, flash } of wings) { g.visible = false; flash.visible = false; }
+  for (const { flash } of wings) flash.visible = false;   // the wingmen stay: they fly on behind the ship
   crawlEl.style.display = 'none';
   drawWarp(0);
   // place trench pieces for traveled = 0 now, so the first trench frame is correct
@@ -1495,7 +1495,7 @@ function startSection(k) {
   curSec = k; SEC = SECTIONS[k];
   // we are on the Death Star in the trench and the final run-up: its sphere is never shown here
   ds.visible = false; dsBoom.visible = false; for (const c of dsChunks) c.m.visible = false;
-  if (k === 'FINAL') SFX.alarm(); else SFX.stinger();
+  if (k === 'FINAL') { SFX.alarm(); torpedoes = 3; } else SFX.stinger();   // the final run-up starts with three torpedoes
   beams.length = 0; beams.push(...secObs[k].beams);
   turrets.length = 0; turrets.push(...secObs[k].turrets);
   phase = k === 'FINAL' ? 'final' : 'play';
@@ -1612,7 +1612,9 @@ ventGrp.visible = false;
 scene.add(ventGrp);
 let lockT = 0, wasAligned = false, lockT40 = false, lockT80 = false, lockDoneSnd = false;
 const reticleEl = document.getElementById('reticle');
+let torpedoes = 3;                                   // three attempts at the vent
 function startFinalState() {
+  torpedoes = 3;
   lockT = 0; wasAligned = false; lockT40 = false; lockT80 = false; lockDoneSnd = false; lockToneStop();
   ventGrp.visible = true;
   reticleEl.style.display = 'block';
@@ -1642,13 +1644,13 @@ function finalStep(dt) {
 function fire() {
   if (phase !== 'final' || dead) return;
   if (lockT >= 0.8 && traveled <= FIN.ventAt + 10) winShot();
-  else { SFX.laser(); secondPass(true); }
+  else SFX.dud();                                    // not locked yet: nothing happens, no torpedo, no heart
 }
 function secondPass(fired) {
   lockToneStop();
   if (fired) SFX.dud(); else SFX.alarm();
-  if (!calm) { hearts--; hurt(); }
-  if (hearts <= 0 && !calm) { dead = true; deathCount++; saveProgress(); showLoss(); return; }
+  if (!calm) torpedoes--;                            // a missed run costs one torpedo: three attempts in all
+  if (torpedoes <= 0 && !calm) { dead = true; deathCount++; saveProgress(); showLoss(); return; }
   pending.push(...MISS_LINES);
   traveled = FIN.ventAt - FIN.redoAt;                              // short run-up: 6 s
   lockT = 0; wasAligned = false; lockT40 = false; lockT80 = false; lockDoneSnd = false;
@@ -2288,15 +2290,40 @@ function update(dt) {
   const h = Math.max(hearts, 0);
   const lenNow = phase === 'surface' ? SURF.len : SEC.len;
   const rollTxt = rollT > 0 ? 'ROLL' : rollCd > 0 ? 'ROLL ' + rollCd.toFixed(1) : 'ROLL ready';
-  hud.textContent = `HEARTS ${'♥'.repeat(h)}${'·'.repeat(CFG.hearts - h)}   ${phase === 'surface' ? 'SURFACE' : curSec} ${Math.floor(traveled)}m / ${lenNow}m   ${shieldT > 0 ? 'SHIELD ' + shieldT.toFixed(1) + '   ' : ''}${rollTxt}`;
+  hud.textContent = `${phase === 'final' ? `TORPEDOES ${'▮'.repeat(torpedoes)}${'·'.repeat(3 - torpedoes)}` : `HEARTS ${'♥'.repeat(h)}${'·'.repeat(CFG.hearts - h)}`}   ${phase === 'surface' ? 'SURFACE' : curSec} ${Math.floor(traveled)}m / ${lenNow}m   ${shieldT > 0 ? 'SHIELD ' + shieldT.toFixed(1) + '   ' : ''}${rollTxt}`;
 }
 
 const clock = new THREE.Clock();
+// ---- wingmen: after the approach they fly loosely behind the ship and weave (never ahead of it)
+let wingT = 0;
+const WING_FOLLOW = 4;                                 // how fast they close on their spot, per second: loose, not rigid
+function wingmenStep(dt) {
+  if (phase === 'approach') return;                    // the approach sets their positions
+  wingT += dt;
+  const active = !dead && !done && ['surface', 'dive', 'play', 'final', 'boss'].includes(phase);
+  for (const { g, w, i } of wings) {
+    if (!active) { g.visible = false; continue; }
+    const sw = w.sway;
+    const gx = shipX + w.off[0] + Math.sin(wingT * 0.9 * sw + i) * 0.9;           // weave side to side
+    const gy = shipY + w.off[1] + Math.sin(wingT * 1.3 * sw + i * 2) * 0.45;      // and up and down
+    const gz = Math.max(1.5, w.off[2] + Math.sin(wingT * 0.7 * sw + i * 3) * 0.8); // and in and out, never past the camera
+    if (!g.visible) g.position.set(gx, gy, gz);        // first frame in formation: appear at their spot
+    g.visible = true;
+    const k = 1 - Math.exp(-WING_FOLLOW * dt);
+    g.position.x += (gx - g.position.x) * k;
+    g.position.y += (gy - g.position.y) * k;
+    g.position.z += (gz - g.position.z) * k;
+    g.rotation.set(ship.rotation.x, 0, ship.rotation.z);
+    const sc = ship.scale.x * 0.45;                     // smaller: present, but never filling the screen
+    g.scale.setScalar(g.scale.x + (sc - g.scale.x) * k);
+  }
+}
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (started && !paused && !lossOn) {
     if (hitStopT > 0) hitStopT -= dt; else update(dt);
     fxUpdate(dt);
+    wingmenStep(dt);
   }
   if (lossOn) lossType(dt);
   renderer.render(scene, cam);
