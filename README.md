@@ -1,4 +1,4 @@
-# Anvesha Slice (N64-style browser game)
+# Little game for gf
 
 Single-page Three.js game. Open `index.html` in a browser, or view the GitHub Pages site.
 
