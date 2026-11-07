@@ -955,10 +955,10 @@ function crawlUpdate(t) {                               // t: seconds since the 
 
 // the squad: Red Two, Three, Four and Six fly as wingmen. Armand and Sanay are voices only.
 const WING = [
-  { off: [-4.2, -0.6, 3.0], sway: 0.9 },
-  { off: [ 4.2, -0.6, 3.0], sway: 1.1 },
-  { off: [-2.4,  1.4, 4.5], sway: 0.8 },
-  { off: [ 2.4,  1.4, 4.5], sway: 1.0 },
+  { off: [-4.2, -1.8, 1.8], sway: 0.9 },
+  { off: [ 4.2, -1.8, 1.8], sway: 1.1 },
+  { off: [-2.0, -2.0, 3.2], sway: 0.8 },
+  { off: [ 2.0, -2.0, 3.2], sway: 1.0 },
 ];
 const flashMat = new THREE.MeshBasicMaterial({ color: 0xcfeaff, transparent: true, opacity: 1, fog: false });
 const wings = WING.map((w, i) => {
@@ -2310,7 +2310,8 @@ function wingmenStep(dt) {
     g.position.y += (gy - g.position.y) * k;
     g.position.z += (gz - g.position.z) * k;
     g.rotation.set(ship.rotation.x, 0, ship.rotation.z);
-    g.scale.setScalar(ship.scale.x * 0.85);
+    const sc = ship.scale.x * 0.45;                     // smaller: present, but never filling the screen
+    g.scale.setScalar(g.scale.x + (sc - g.scale.x) * k);
   }
 }
 function frame() {
