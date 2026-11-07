@@ -2072,7 +2072,7 @@ function clearShot(x, y, z) {                                             // no 
   return true;
 }
 // radar: hold Space for 3 s with a clear view to lock. Every missile uses up the lock, so each one needs a new lock.
-const LOCK_T = 3;
+const LOCK_T = 2;
 const radar = { t: 0, locked: false, seen: false };
 const missiles = [];                                           // infinite: the pool grows as you fire
 const missileBodyMat = new THREE.MeshPhongMaterial({ color: 0xdfe4ea, flatShading: true, shininess: 30 });
@@ -2169,7 +2169,7 @@ function dsStep(dt) {                                           // the Death Sta
   }
 }
 
-const GUN_FIRE_T = 0.6, GUN_CHARGE_T = 0.3;                 // each gun fires once a second; the glow shows it coming
+const GUN_FIRE_T = 1.0, GUN_CHARGE_T = 0.3;                 // each gun fires once every 1.6 s; the glow shows it coming
 const gunHullMat = new THREE.MeshPhongMaterial({ color: 0x4a1417, flatShading: true });
 const gunTrimMat = new THREE.MeshPhongMaterial({ color: 0xb3262e, flatShading: true });
 const guns = [];
