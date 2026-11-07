@@ -1508,7 +1508,7 @@ function startSection(k) {
   curSec = k; SEC = SECTIONS[k];
   // we are on the Death Star in the trench and the final run-up: its sphere is never shown here
   ds.visible = false; dsBoom.visible = false; for (const c of dsChunks) c.m.visible = false;
-  if (k === 'FINAL') { SFX.alarm(); torpedoes = 3; } else SFX.stinger();   // the final run-up starts with three torpedoes
+  if (k === 'FINAL') { SFX.alarm(); torpedoes = 3; nowCued = false; } else SFX.stinger();   // the final run-up starts with three torpedoes
   beams.length = 0; beams.push(...secObs[k].beams);
   turrets.length = 0; turrets.push(...secObs[k].turrets);
   phase = k === 'FINAL' ? 'final' : 'play';
@@ -1610,7 +1610,9 @@ function placeOrbs(dt) {                              // the orb meshes were nev
 function hideCard() { cardEl.style.display = 'none'; }
 
 // ---- final shot (Bible 4.6 / Final): align the vent, hold the lock, fire ----
-const FIN = { ventAt: 300, redoAt: 300, ventY: -2.6, hole: 0.8, win: 4 };   // a 300 m run to the vent; a miss repeats it   // the one point: fire inside the hole, within 4 m of the vent
+const FIN = { ventAt: 300, redoAt: 300, ventY: -4.95, hole: 0.8, win: 4 };   // the vent is on the floor; the torpedo lands straight below the ship
+const FIRE_CUE_M = 108;                               // 'NOW.' three seconds before the vent reaches the ship
+let nowCued = false;   // a 300 m run to the vent; a miss repeats it   // the one point: fire inside the hole, within 4 m of the vent
 const ventGrp = new THREE.Group();
 {
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.12, 4, 16),
@@ -1625,6 +1627,14 @@ const ventGrp = new THREE.Group();
   ventGrp.add(halo, beacon, ring, hole);
   ventGrp.userData.halo = halo;
 }
+const dropMark = new THREE.Group();
+const dropDisc = new THREE.Mesh(new THREE.CircleGeometry(0.8, 24), new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.45, fog: false, depthWrite: false }));
+const dropRing = new THREE.Mesh(new THREE.RingGeometry(0.8, 0.98, 24), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, fog: false, depthWrite: false }));
+dropDisc.rotation.x = dropRing.rotation.x = -Math.PI / 2;
+dropDisc.position.y = dropRing.position.y = 0.03;
+dropMark.add(dropDisc, dropRing);
+dropMark.visible = false;
+scene.add(dropMark);
 ventGrp.visible = false;
 scene.add(ventGrp);
 let lockT = 0, wasAligned = false, lockT40 = false, lockT80 = false, lockDoneSnd = false;
@@ -1638,7 +1648,7 @@ function startFinalState() {
 }
 function finalStep(dt) {
   if (dead) return;
-  const aligned = Math.hypot(shipX, shipY - FIN.ventY) < FIN.hole;   // inside the hole
+  const aligned = Math.abs(shipX) < FIN.hole;                          // the drop point is over the hole
   if (aligned && !wasAligned) SFX.lockDone();
   if (!aligned && wasAligned) SFX.lockLost();
   wasAligned = aligned;
@@ -1646,8 +1656,14 @@ function finalStep(dt) {
   if (aligned) lockToneSet(1); else lockToneStop();
   // vent: grows as it comes, hidden once it has passed
   ventGrp.position.set(0, FIN.ventY, traveled - FIN.ventAt);
+  dropMark.position.set(shipX, -4.95, 0);
+  dropMark.children[0].material.color.setHex(aligned ? 0x7dff7d : 0xffd27a);
+  dropMark.children[1].material.color.setHex(aligned ? 0x7dff7d : 0xffffff);
+  // 'NOW.' three seconds before the vent reaches the ship
+  if (!nowCued && traveled >= FIN.ventAt - FIRE_CUE_M) { nowCued = true; pending.push(FIRE_LINE); }
   ventGrp.scale.setScalar(1);
   ventGrp.userData.halo.scale.setScalar(1 + 0.12 * Math.sin(performance.now() / 180));
+  ventGrp.userData.halo.visible = traveled < FIN.ventAt - 40;   // the halo gets out of the way as you come up on it
   ventGrp.visible = traveled < FIN.ventAt + FIN.win + 2;
   reticleEl.style.background = `conic-gradient(#7dff7d ${lockT / 0.8 * 360}deg, transparent 0)`;
   // the window has closed with no shot: the torpedo is lost and the segment repeats
@@ -1656,7 +1672,7 @@ function finalStep(dt) {
 function fire() {
   if (phase !== 'final' || dead) return;
   if (Math.abs(traveled - FIN.ventAt) > FIN.win) { SFX.dud(); return; }   // too early or too late for the window: nothing happens, no cost
-  if (Math.hypot(shipX, shipY - FIN.ventY) < FIN.hole) winShot();         // in the hole, in the window: hit
+  if (Math.abs(shipX) < FIN.hole) winShot();                             // over the hole, in the window: hit
   else secondPass(true);                                                  // outside the hole: the torpedo is lost, the segment repeats
 }
 function secondPass(fired) {
@@ -1668,12 +1684,13 @@ function secondPass(fired) {
   traveled = FIN.ventAt - FIN.redoAt;                              // short run-up: 6 s
   lockT = 0; wasAligned = false; lockT40 = false; lockT80 = false; lockDoneSnd = false;
   qIdx = FINAL_LINES.length;                                       // the scripted lines have played
+  nowCued = false;
 }
 function winShot() {
   phase = 'win';
   SFX.laserFinal(); setTimeout(SFX.boom, 350); setTimeout(SFX.fanfare, 800);
   shake(0.8, 1.2); burstAt(0, FIN.ventY, ventGrp.position.z, 0xffffff, 60); burstAt(0, FIN.ventY, ventGrp.position.z, 0xffd27a, 40);
-  pending.length = 0; pending.push(FIRE_LINE);
+  pending.length = 0;
   ventGrp.visible = false; reticleEl.style.display = 'none';
   const fl = document.getElementById('flash');
   fl.style.opacity = 1; setTimeout(() => { fl.style.opacity = 0; }, 80);
@@ -2351,6 +2368,24 @@ function wingmenStep(dt) {
     g.scale.setScalar(g.scale.x + (sc - g.scale.x) * k);
   }
 }
+// the drop point, drawn on top of the dialogue box too, so it can always be seen
+const dropEl = document.createElement('div');
+dropEl.style.cssText = 'position:fixed;border:3px solid #ffd27a;border-radius:50%;box-sizing:border-box;pointer-events:none;z-index:9;display:none';
+document.body.appendChild(dropEl);
+const dropPt = new THREE.Vector3();
+function placeDropEl() {
+  if (!dropMark.visible) { dropEl.style.display = 'none'; return; }
+  const rect = renderer.domElement.getBoundingClientRect();
+  dropPt.set(shipX, -4.95, 0);
+  const d = cam.position.distanceTo(dropPt);
+  const r = 0.8 / d * (rect.height / 2) / Math.tan(THREE.MathUtils.degToRad(30));   // the hole's radius on screen
+  const v = dropPt.clone().project(cam);
+  const x = rect.left + (v.x + 1) / 2 * rect.width, y = rect.top + (1 - v.y) / 2 * rect.height;
+  dropEl.style.display = 'block';
+  dropEl.style.width = dropEl.style.height = (2 * r) + 'px';
+  dropEl.style.left = (x - r) + 'px'; dropEl.style.top = (y - r) + 'px';
+  dropEl.style.borderColor = Math.abs(shipX) < FIN.hole ? '#7dff7d' : '#ffd27a';
+}
 const ventCnt = document.createElement('div');
 ventCnt.style.cssText = 'position:fixed;top:12px;left:0;right:0;text-align:center;font:bold 26px monospace;color:#7dff7d;text-shadow:0 0 8px #3f3;pointer-events:none;z-index:7;display:none';
 document.body.appendChild(ventCnt);
@@ -2361,6 +2396,8 @@ function frame() {
     fxUpdate(dt);
     wingmenStep(dt);
     ventCnt.style.display = phase === 'final' && !dead ? 'block' : 'none';
+    dropMark.visible = phase === 'final' && !dead;
+    placeDropEl();
     if (phase === 'final') ventCnt.textContent = `VENT IN ${Math.max(0, Math.ceil(FIN.ventAt - traveled))} m`;
   }
   if (lossOn) lossType(dt);
