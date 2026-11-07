@@ -117,7 +117,7 @@
 <div><b>Arrows or WASD</b><span>steer the ship</span></div>
 <div><b>Space</b><span>barrel roll (deflects turret bolts)</span></div>
 <div><b>Space, in the final run-up</b><span>fire the torpedo at the vent</span></div>
-<div><b>Enter / Space</b><span>skip the crawl or the approach (after 4 s); Enter also advances a line</span></div>
+<div><b>Enter / Space</b><span>skip the crawl or the approach (after 4 s); Enter advances a line; Space three times skips a cutscene</span></div>
 <div><b>Space (boss fight)</b><span>hold 3 s to lock on, tap to fire a missile. Lock needs a clear view.</span></div>
 <div><b>Esc</b><span>pause: resume, calm mode, restart, mute, test mode</span></div>
 </div>
@@ -876,6 +876,15 @@ function advanceComm() {                              // Enter: show the rest of
   if (cur.shown < cur.text.length) cur.shown = cur.text.length;
   else closeComm();
 }
+// three quick Space presses skip the cutscene: the crawl or approach outright, or the dialogue of the current section
+const spaceTaps = [];
+function skipCutscene() {
+  if (phase === 'crawl') { endCrawl(true); return; }
+  if (phase === 'approach') { pending.length = 0; closeComm(); endApproach(); return; }
+  if (['surface', 'play', 'final', 'boss'].includes(phase)) {
+    pending.length = 0; closeComm(); qIdx = queue.length;   // the rest of this section's lines are skipped
+  }
+}
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'Enter') {                                       // Enter: begin, skip, advance, try again, replay
@@ -888,6 +897,10 @@ addEventListener('keydown', e => {
     return;
   }
   if (e.code === 'Space' && !e.repeat && !paused) {            // Space skips the crawl or the approach, even mid-dialogue
+    const now = performance.now();
+    spaceTaps.push(now);
+    while (spaceTaps.length && now - spaceTaps[0] > 1000) spaceTaps.shift();
+    if (spaceTaps.length >= 3) { spaceTaps.length = 0; e.preventDefault(); skipCutscene(); return; }   // three quick presses
     if (phase === 'crawl' && crawlT >= CFG.skipAfter) { e.preventDefault(); pending.length = 0; closeComm(); endCrawl(true); return; }
     if (phase === 'approach' && approachT >= CFG.skipAfter) { e.preventDefault(); pending.length = 0; endApproach(); return; }
   }
