@@ -73,9 +73,7 @@
   #winText { font-size: 22px; width: 620px; text-align: center; color: #ffe27a; min-height: 90px; }
   #pause { background: rgba(0,0,0,.75); font-family: monospace; overflow-y: auto; justify-content: safe center; padding: 16px 0; }
   #pause h2 { margin: 0 0 14px; font-size: 26px; color: #9ff; }
-  #testBox { display: none; flex-direction: column; gap: 4px; margin-top: 4px; }
   #pause .btn { margin-top: 8px; padding: 6px 26px; font-size: 16px; }
-  #testBox button { font-size: 14px; padding: 4px 12px; }
   #card { background: rgba(0,0,0,.6); pointer-events: none; }
   #cardBox { width: 300px; height: 220px; background: #0a1020; border: 3px solid #4af; display: flex; align-items: center; justify-content: center; color: #456; font-size: 14px; }
   #cardCap { margin-top: 12px; font-size: 18px; color: #ffe27a; }
@@ -97,20 +95,8 @@
 <div id="pause" class="ov"><h2>PAUSED</h2>
   <div class="btn" id="pResume">[Esc] Resume</div>
   <div class="btn" id="pCalm">[C] Calm mode: off</div>
-  <div class="btn" id="pGod">[I] Invincible: off</div>
   <div class="btn" id="pRestart">[R] Restart run</div>
   <div class="btn" id="pMute">[M] Mute: off</div>
-  <div class="btn" id="pTest">[T] Test mode: off</div>
-  <div id="testBox">
-    <div class="btn" data-jump="approach">[1] Approach</div>
-    <div class="btn" data-jump="surface">[2] Surface</div>
-    <div class="btn" data-jump="P1">[3] Trench 1</div>
-    <div class="btn" data-jump="P2">[4] Trench 2</div>
-    <div class="btn" data-jump="P3">[5] Trench 3</div>
-    <div class="btn" data-jump="FINAL">[6] Final run-up</div>
-    <div class="btn" data-jump="boss">[7] Boss fight</div>
-    <div class="btn" data-jump="gameover">[8] Game over screen</div>
-  </div>
 </div>
 <div id="card" class="ov"><div id="cardBox">[photo slot]</div><div id="cardCap"></div></div>
 <div id="msg"></div>
@@ -123,7 +109,7 @@
 <div><b>Space, in the final run-up</b><span>fire the torpedo through the vent hole, as the vent passes you</span></div>
 <div><b>Enter / Space</b><span>skip the crawl or the approach (after 4 s); Enter advances a line; Space three times skips a cutscene</span></div>
 <div><b>Space (boss fight)</b><span>hold 3 s to lock on, tap to fire a missile. Lock needs a clear view.</span></div>
-<div><b>Esc</b><span>pause: resume, calm mode, restart, mute, test mode</span></div>
+<div><b>Esc</b><span>pause: resume, calm mode, restart, mute</span></div>
 </div>
 <div class="note">and there is a comma after dearest, hope you noticed.</div>
 <div id="startBtn" class="btn">Press Enter to begin</div>
@@ -286,7 +272,6 @@ const ORBS = [
 ];
 let gotOrbs = [];                           // no saves: every game starts fresh
 let deathCount = 0, assistOffered = false, calm = false, paused = false, muted = false, bgm = null;
-let god = false;                                    // test toggle: invincible (hits, pod shot and torpedo loss do nothing)
 function saveProgress() {}
 
 // ---- helpers ----
@@ -830,7 +815,6 @@ function resetSection() {
 }
 
 function hit() {
-  if (god) { SFX.deflect(); return; }                                // invincible: the hit does nothing
   if (shieldT > 0) { SFX.deflect(); burstAt(shipX, shipY, 0, 0x7fd8ff, 16); return; }   // power orb shield: the hit does nothing
   if (calm) { inv = CFG.invuln; SFX.deflect(); hitLine(); return; }        // calm mode: hits cost nothing
   hearts--;
@@ -934,14 +918,8 @@ addEventListener('keydown', e => {
   if (e.code === 'Escape' && started && !dead && phase !== 'title' && phase !== 'win') { togglePause(); return; }
   if (paused && !e.repeat) {                                      // the pause menu: one key each
     if (e.code === 'KeyC') toggleCalm();
-    else if (e.code === 'KeyI') toggleGod();
     else if (e.code === 'KeyR') restartFromPause();
     else if (e.code === 'KeyM') toggleMute();
-    else if (e.code === 'KeyT') toggleTestMode();
-    else if (e.code.startsWith('Digit') && document.getElementById('testBox').style.display === 'flex') {
-      const k = TEST_STAGES[Number(e.code.slice(5)) - 1];
-      if (k) jumpStage(k);
-    }
   }
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
@@ -951,11 +929,8 @@ document.getElementById('lossBtn').addEventListener('click', () => { if (lossOn)
 document.getElementById('winBtn').addEventListener('click', () => { if (document.getElementById('win').style.display === 'flex') winReplay(); });
 document.getElementById('pResume').addEventListener('click', () => { if (paused) togglePause(); });
 document.getElementById('pCalm').addEventListener('click', () => { if (paused) toggleCalm(); });
-document.getElementById('pGod').addEventListener('click', () => { if (paused) toggleGod(); });
 document.getElementById('pRestart').addEventListener('click', () => { if (paused) restartFromPause(); });
 document.getElementById('pMute').addEventListener('click', () => { if (paused) toggleMute(); });
-document.getElementById('pTest').addEventListener('click', () => { if (paused) toggleTestMode(); });
-document.querySelectorAll('[data-jump]').forEach(el => el.addEventListener('click', () => { if (paused) jumpStage(el.dataset.jump); }));
 function beginGame() {
   actx = new (window.AudioContext || window.webkitAudioContext)();
   started = true;
@@ -964,7 +939,6 @@ function beginGame() {
   bgm = new Audio(BGM_SRC);
   bgm.loop = true; bgm.volume = 0.6;
   bgm.play().catch(() => {});
-  if (JUMP) { jumpTo(JUMP); return; }                     // test mode: straight to the chosen stage
   phase = 'title'; titleT = 0;
   const tEl = document.getElementById('title');
   tEl.style.display = 'block';
@@ -1178,11 +1152,6 @@ function endApproach() {
 }
 
 // ---- surface (Bible 5): flat plain, turbolaser bursts aimed at lanes, then a dive into the trench ----
-const JUMP = (() => {                                       // test mode: ?jump=approach|surface|P1|P2|P3|FINAL|boss|gameover
-  const q = new URLSearchParams(location.search);
-  if (q.get('jump')) return q.get('jump');
-  return q.get('section') === 'surface' ? 'surface' : q.get('section') === 'trench' ? 'P1' : null;
-})();
 const SECTION = new URLSearchParams(location.search).get('section');   // ?section=surface or ?section=trench (Bible M3)
 const ROUNDS = 6;                                      // six rounds per emitter, the last just before it passes the ship
 const SURF = { speed: 40, len: 685, boltSpeed: 68, flight: 1.0, flashSec: 0.8 };
@@ -1566,30 +1535,6 @@ function startSection(k) {
   if (k === 'FINAL') startFinalState(); else { ventGrp.visible = false; reticleEl.style.display = 'none'; }                     // Bible: the HUD dims at the start of P3
 }
 function startTrench() { startSection('P1'); }
-function jumpTo(k) {                                        // test mode: play any stage from the start of it
-  ship.visible = true;
-  if (k === 'approach') { endCrawl(true); return; }
-  if (k === 'surface') { startSurface(); return; }
-  if (k === 'boss') { startBoss(); startFightMusic(); return; }
-  if (k === 'gameover') { startSection('P1'); dead = true; showLoss(); return; }
-  if (!SECTIONS[k]) return;
-  startFightMusic();
-  startSection(k);
-}
-function setTestBox(on) {
-  document.getElementById('testBox').style.display = on ? 'flex' : 'none';
-  document.getElementById('pTest').textContent = 'Test mode: ' + (on ? 'on' : 'off');
-}
-setTestBox(new URLSearchParams(location.search).has('test'));
-const TEST_STAGES = ['approach', 'surface', 'P1', 'P2', 'P3', 'FINAL', 'boss', 'gameover'];
-function toggleTestMode() {
-  setTestBox(document.getElementById('testBox').style.display !== 'flex');
-}
-function jumpStage(k) {                                             // reload straight into that stage
-  const q = new URLSearchParams();
-  q.set('test', '1'); q.set('jump', k);
-  location.search = q.toString();
-}
 
 // ---- speed, calm mode, pause ----
 function curSpeed() {
@@ -1610,11 +1555,6 @@ function toggleCalm() {
 function restartFromPause() {
   togglePause(); lossEl.style.display = 'none'; SFX.respawn();
   startRun();
-}
-function toggleGod() {
-  god = !god;
-  document.getElementById('pGod').textContent = 'Invincible: ' + (god ? 'on' : 'off');
-  SFX.click();
 }
 function toggleMute() {
   muted = !muted;
@@ -1723,7 +1663,7 @@ function secondPass(fired) {
   lockToneStop();
   if (fired) SFX.dud(); else SFX.alarm();
   if (!calm) torpedoes--;                            // a missed run costs one torpedo: three attempts in all
-  if (torpedoes <= 0 && !calm && !god) { dead = true; deathCount++; saveProgress(); showLoss(); return; }
+  if (torpedoes <= 0 && !calm) { dead = true; deathCount++; saveProgress(); showLoss(); return; }
   pending.push(...MISS_LINES);
   traveled = FIN.ventAt - FIN.redoAt;                              // short run-up: 6 s
   for (const t of turrets) { t.towerHit = false; for (const sh of t.shots) { sh.launched = sh.hitDone = sh.announced = false; sh.bolt.visible = false; } }
@@ -2353,7 +2293,7 @@ function bossUpdate(dt) {
     l.m.position.set(l.x, l.y, l.z);
     if (l.z <= BOSS.z + 0.5) {
       l.on = false; l.m.visible = false;
-      if (BOSS.state === 'fight' && Math.abs(l.x - (BOSS.x + POD_X)) < 1.1 && Math.abs(l.y - (BOSS.y + POD_Y)) < 1.1 && !god) wasted();
+      if (BOSS.state === 'fight' && Math.abs(l.x - (BOSS.x + POD_X)) < 1.1 && Math.abs(l.y - (BOSS.y + POD_Y)) < 1.1) wasted();
       else if (BOSS.state === 'fight' && Math.abs(l.x - BOSS.x) < 2.2 && Math.abs(l.y - BOSS.y) < 1.8) { burstAt(BOSS.x, BOSS.y, BOSS.z, 0xffd27a, 8); SFX.deflect(); }   // lasers spark off her hull: missiles finish her
     }
   }
