@@ -1610,16 +1610,20 @@ function placeOrbs(dt) {                              // the orb meshes were nev
 function hideCard() { cardEl.style.display = 'none'; }
 
 // ---- final shot (Bible 4.6 / Final): align the vent, hold the lock, fire ----
-const FIN = { ventAt: 360, redoAt: 216, ventY: -2.6, hole: 0.8, win: 4 };   // the one point: fire inside the hole, within 4 m of the vent
+const FIN = { ventAt: 300, redoAt: 300, ventY: -2.6, hole: 0.8, win: 4 };   // a 300 m run to the vent; a miss repeats it   // the one point: fire inside the hole, within 4 m of the vent
 const ventGrp = new THREE.Group();
 {
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.12, 4, 16),
     new THREE.MeshBasicMaterial({ color: 0x7dff7d, fog: false }));
-  ring.rotation.x = Math.PI / 2;
+  // the ring stands upright, facing the ship: a hole in a wall
   const hole = new THREE.Mesh(new THREE.CircleGeometry(0.72, 10), new THREE.MeshBasicMaterial({ color: 0x0a2010, fog: false }));
-  hole.rotation.x = -Math.PI / 2;
   ring.renderOrder = hole.renderOrder = -1; ring.material.depthWrite = hole.material.depthWrite = false;
-  ventGrp.add(ring, hole);
+  const halo = new THREE.Mesh(new THREE.CircleGeometry(5, 28), new THREE.MeshBasicMaterial({ color: 0x7dff7d, transparent: true, opacity: 0.4, fog: false, depthWrite: false }));
+  halo.position.z = -0.05;
+  const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 22, 6), new THREE.MeshBasicMaterial({ color: 0xbdffbd, transparent: true, opacity: 0.7, fog: false, depthWrite: false }));
+  beacon.position.y = 11;
+  ventGrp.add(halo, beacon, ring, hole);
+  ventGrp.userData.halo = halo;
 }
 ventGrp.visible = false;
 scene.add(ventGrp);
@@ -1642,8 +1646,8 @@ function finalStep(dt) {
   if (aligned) lockToneSet(1); else lockToneStop();
   // vent: grows as it comes, hidden once it has passed
   ventGrp.position.set(0, FIN.ventY, traveled - FIN.ventAt);
-  const grow = mix(0.2, 1, clamp(traveled / FIN.ventAt, 0, 1));
-  ventGrp.scale.setScalar(grow);
+  ventGrp.scale.setScalar(1);
+  ventGrp.userData.halo.scale.setScalar(1 + 0.12 * Math.sin(performance.now() / 180));
   ventGrp.visible = traveled < FIN.ventAt + FIN.win + 2;
   reticleEl.style.background = `conic-gradient(#7dff7d ${lockT / 0.8 * 360}deg, transparent 0)`;
   // the window has closed with no shot: the torpedo is lost and the segment repeats
@@ -2347,12 +2351,17 @@ function wingmenStep(dt) {
     g.scale.setScalar(g.scale.x + (sc - g.scale.x) * k);
   }
 }
+const ventCnt = document.createElement('div');
+ventCnt.style.cssText = 'position:fixed;top:12px;left:0;right:0;text-align:center;font:bold 26px monospace;color:#7dff7d;text-shadow:0 0 8px #3f3;pointer-events:none;z-index:7;display:none';
+document.body.appendChild(ventCnt);
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (started && !paused && !lossOn) {
     if (hitStopT > 0) hitStopT -= dt; else update(dt);
     fxUpdate(dt);
     wingmenStep(dt);
+    ventCnt.style.display = phase === 'final' && !dead ? 'block' : 'none';
+    if (phase === 'final') ventCnt.textContent = `VENT IN ${Math.max(0, Math.ceil(FIN.ventAt - traveled))} m`;
   }
   if (lossOn) lossType(dt);
   renderer.render(scene, cam);
