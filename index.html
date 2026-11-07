@@ -115,7 +115,7 @@
 <div class="sub">TRENCH RUN</div>
 <div class="keys">
 <div><b>Arrows or WASD</b><span>steer the ship</span></div>
-<div><b>Space</b><span>barrel roll (deflects turret bolts)</span></div>
+<div><b>Shift</b><span>barrel roll (deflects turret bolts)</span></div>
 <div><b>Space, in the final run-up</b><span>fire the torpedo through the vent hole, as the vent passes you</span></div>
 <div><b>Enter / Space</b><span>skip the crawl or the approach (after 4 s); Enter advances a line; Space three times skips a cutscene</span></div>
 <div><b>Space (boss fight)</b><span>hold 3 s to lock on, tap to fire a missile. Lock needs a clear view.</span></div>
@@ -250,7 +250,7 @@ const WIN_LINES = [
 { who: 'Hamilton', text: "There he is!" },
 { who: 'Eliza', text: "Quick, beam him up!" }
 ];
-const WIN_MESSAGE = "[SANAY: your message, 3 to 6 lines. One grand declaration, then one quiet true line.]";
+const WIN_MESSAGE = "Anvesha, thank you for winning my heart back! And, thank you for making the past few months of my life beautiful <3";
 const ASSIST_LINE = { who: 'Sanay', text: "Need a hand? There's a calm mode in the menu for those shit at games :p" };
 // hit reactions rotate in order. needsDL: only after the Dark Lady has spoken.
 const HIT_SEQS = [
@@ -904,7 +904,8 @@ addEventListener('keydown', e => {
     if (phase === 'crawl' && crawlT >= CFG.skipAfter) { e.preventDefault(); pending.length = 0; closeComm(); endCrawl(true); return; }
     if (phase === 'approach' && approachT >= CFG.skipAfter) { e.preventDefault(); pending.length = 0; endApproach(); return; }
   }
-  if (e.code === 'Space') { e.preventDefault(); if (phase === 'final') { if (!e.repeat) fire(); } else if (phase === 'boss') { if (!e.repeat) bossSpace(); } else if (phase !== 'approach' && phase !== 'title') tryRoll(); }
+  if (e.code === 'Space') { e.preventDefault(); if (phase === 'final') { if (!e.repeat) fire(); } else if (phase === 'boss') { if (!e.repeat) bossSpace(); } }
+  if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !e.repeat) tryRoll();   // barrel roll: Shift (tryRoll checks the phase)
   if (e.code === 'Escape' && started && !dead && phase !== 'title' && phase !== 'win') { togglePause(); return; }
   if (paused && !e.repeat) {                                      // the pause menu: one key each
     if (e.code === 'KeyC') toggleCalm();
@@ -1352,7 +1353,7 @@ function diveUpdate(dt) {                           // 2 s dive: nose down, then
   if (diveT >= 2) startTrench();
 }
 
-// ---- barrel roll (Bible 4.4): Space or double-tap, 0.5 s, 0.75 s cooldown, deflects bolts only ----
+// ---- barrel roll (Bible 4.4): Shift, 0.5 s, 0.75 s cooldown, deflects bolts only ----
 let rollT = 0, rollCd = 0, rollDir = 1, rollHinted = false;
 const lastTap = { L: -9999, R: -9999 };
 function tryRoll() {
@@ -1437,7 +1438,7 @@ function turretStep(dt) {
       if (charging && !s.announced) {
         s.announced = true;
         chargeTone();
-        if (SEC.rollHint && !rollHinted) { rollHinted = true; say('SPACE: barrel roll deflects bolts', 3.5); }
+        if (SEC.rollHint && !rollHinted) { rollHinted = true; say('SHIFT: barrel roll deflects bolts', 3.5); }
       }
       if (traveled >= s.dl && !s.launched) { s.launched = true; s.ax = clamp(shipX + (tx - shipX) * 2, -4.5, 4.5); s.ay = shipY; s.bolt.scale.setScalar(1.5); SFX.zap(); }
       if (!s.launched) continue;
@@ -1610,7 +1611,7 @@ function placeOrbs(dt) {                              // the orb meshes were nev
 function hideCard() { cardEl.style.display = 'none'; }
 
 // ---- final shot (Bible 4.6 / Final): align the vent, hold the lock, fire ----
-const FIN = { ventAt: 300, redoAt: 300, ventY: -2.6, hole: 0.8, win: 4, lead: 40 };   // the bomb guide lies 40 m ahead on the floor; fire as the vent passes over it
+const FIN = { ventAt: 300, redoAt: 300, ventY: -2.6, hole: 0.8, win: 4, lead: 18 };   // the bomb guide lies 18 m ahead on the floor; fire as the vent passes over it
 const FIRE_CUE_M = 108;                               // 'NOW.' three seconds before the vent reaches the ship
 let nowCued = false;   // a 300 m run to the vent; a miss repeats it   // the one point: fire inside the hole, within 4 m of the vent
 const ventGrp = new THREE.Group();
@@ -1874,13 +1875,24 @@ const NET_W = 12, NET_H = 8, NET_S = 2, NET_T = 0.4, NET_SPEED = 26, NET_EVERY =
 const nets = [];
 function makeNetRects(cx, cy) {
   const cols = NET_W / NET_S, rows = NET_H / NET_S;
+  const X = i => -NET_W / 2 + i * NET_S, Y = j => -NET_H / 2 + j * NET_S;
+  // a hole is only placed where the ship can fly: its centre must sit inside the steer box, with a margin
+  const limX = CFG.steerX - 0.5, limY = CFG.steerY - 0.5;
+  const reachable = (c, r, w) => {                                        // w = size in cells (2 or 1)
+    const hx = cx + X(c) + w * NET_S / 2, hy = cy + Y(r) + w * NET_S / 2;
+    return Math.abs(hx) <= limX && Math.abs(hy) <= limY;
+  };
+  const big = [], small = [];
+  for (let c = 0; c < cols - 1; c++) for (let r = 0; r < rows - 1; r++) if (reachable(c, r, 2)) big.push({ c, r });
+  for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) if (reachable(c, r, 1)) small.push({ c, r });
+  const pick = list => list.length ? list[Math.floor(Math.random() * list.length)] : { c: 0, r: 0 };
+  const b = pick(big), t = pick(small);
   const holes = [
-    { c0: Math.floor(Math.random() * (cols - 1)), r0: Math.floor(Math.random() * (rows - 1)), w: 2, h: 2 },   // a 2x2 hole
-    { c0: Math.floor(Math.random() * cols), r0: Math.floor(Math.random() * rows), w: 1, h: 1 }                  // a 1x1 hole
+    { c0: b.c, r0: b.r, w: 2, h: 2 },     // a 2x2 hole, inside the reachable area
+    { c0: t.c, r0: t.r, w: 1, h: 1 }      // a 1x1 hole, inside the reachable area
   ];
   const inHole = (ci, ri) => ci >= 0 && ri >= 0 && ci < cols && ri < rows &&
     holes.some(h => ci >= h.c0 && ci < h.c0 + h.w && ri >= h.r0 && ri < h.r0 + h.h);
-  const X = i => -NET_W / 2 + i * NET_S, Y = j => -NET_H / 2 + j * NET_S;
   const rects = [];
   for (let i = 0; i <= cols; i++) for (let j = 0; j < rows; j++) {          // vertical bars, skipped next to a hole
     if (inHole(i - 1, j) || inHole(i, j)) continue;
