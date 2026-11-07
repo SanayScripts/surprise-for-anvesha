@@ -954,10 +954,10 @@ function crawlUpdate(t) {                               // t: seconds since the 
 
 // the squad: Red Two, Three, Four and Six fly as wingmen. Armand and Sanay are voices only.
 const WING = [
-  { off: [-4.5, -0.4, -7],  sway: 0.9 },
-  { off: [ 4.5, -0.4, -7],  sway: 1.1 },
-  { off: [-8.0, -1.2, -15], sway: 0.8 },
-  { off: [ 8.0, -1.2, -15], sway: 1.0 },
+  { off: [-4.2, -0.6, 3.0], sway: 0.9 },
+  { off: [ 4.2, -0.6, 3.0], sway: 1.1 },
+  { off: [-2.4,  1.4, 4.5], sway: 0.8 },
+  { off: [ 2.4,  1.4, 4.5], sway: 1.0 },
 ];
 const flashMat = new THREE.MeshBasicMaterial({ color: 0xcfeaff, transparent: true, opacity: 1, fog: false });
 const wings = WING.map((w, i) => {
@@ -1123,7 +1123,7 @@ function endApproach() {
   SFX.whoosh();
   closeComm();
   startSurface();
-  for (const { g, flash } of wings) { g.visible = false; flash.visible = false; }
+  for (const { flash } of wings) flash.visible = false;   // the wingmen stay: they fly on behind the ship
   crawlEl.style.display = 'none';
   drawWarp(0);
   // place trench pieces for traveled = 0 now, so the first trench frame is correct
@@ -1139,7 +1139,7 @@ const JUMP = (() => {                                       // test mode: ?jump=
   return q.get('section') === 'surface' ? 'surface' : q.get('section') === 'trench' ? 'P1' : null;
 })();
 const SECTION = new URLSearchParams(location.search).get('section');   // ?section=surface or ?section=trench (Bible M3)
-const ROUNDS = 6;                                      // one round per second: six rounds per emitter, the last just before it passes the ship
+const ROUNDS = 6;                                      // six rounds per emitter, the last just before it passes the ship
 const SURF = { speed: 40, len: 685, boltSpeed: 68, flight: 1.0, flashSec: 0.8 };
 SURF.len = Math.max(SURF.len, Math.ceil(dialogueEndM(SURF_LINES, SURF.speed) + 30));   // long enough for its lines
 const LANE_X = { L: -3, R: 3, C: 0 };
@@ -1160,8 +1160,8 @@ const emitters = SURF_BOLTS.map(([d, lane]) => {
   tower.position.set(x, -2.75, 0);
   surfGroup.add(tower);
   const shots = [];
-  for (let k = 1; k <= ROUNDS; k++) {               // one round per second
-    const dl = pe - k * SURF.speed;                 // section distance at which this round launches
+  for (let k = 1; k <= ROUNDS; k++) {               // one round per 1.25 s
+    const dl = pe - k * SURF.speed * 1.25;          // section distance at which this round launches: one round per 1.25 s
     if (dl < 40) continue;
     const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 4), boltMat);
     bolt.position.set(x, 0, 0); bolt.visible = false;
@@ -1448,10 +1448,10 @@ const SECTIONS = {
         beams: [[80,'C'],[150,'L'],[220,'R'],[290,'U'],[360,'D'],[430,'L'],[500,'R'],[560,'C'],[630,'L'],[690,'R'],[760,'U']], pillars: [], turrets: [[300,'R'],[520,'L']] },
   P2: { speed: 48, len: 1028, gapW: 3.5, lines: P2_LINES, next: 'P3', rollHint: true, fire: 1.5,
         beams: [[70,'R'],[150,'L'],[230,'C'],[400,'U'],[520,'D'],[780,'L'],[600,'R'],[880,'C']], pillars: [[310,'C'],[700,'R']],
-        turrets: [[300,'L'],[400,'R'],[460,'L'],[600,'L'],[620,'R']] },
+        turrets: [[300,'L'],[400,'R'],[600,'L'],[620,'R']] },
   P3: { speed: 56, len: 1086, gapW: 2.8, lines: P3_LINES, next: 'FINAL', fire: 1.5,
         beams: [[60,'L'],[120,'R'],[180,'L'],[240,'R'],[450,'C'],[580,'U'],[700,'D'],[840,'R'],[900,'L'],[360,'R'],[960,'C']], pillars: [[520,'L'],[780,'C']],
-        turrets: [[320,'L'],[320,'R'],[400,'L'],[400,'R'],[480,'L'],[480,'R'],[640,'R'],[720,'L']] },
+        turrets: [[320,'L'],[320,'R'],[400,'L'],[480,'L'],[640,'R'],[720,'L']] },
   FINAL: { speed: 36, len: 400, gapW: 3, lines: FINAL_LINES, next: null, beams: [], pillars: [], turrets: [] },
   // the boss arena: open space. Her laser nets and bolts are the only obstacles.
   ARENA: { speed: 46, len: 0, gapW: 3.2, lines: [], next: null, fire: 1.6,
@@ -1483,7 +1483,7 @@ for (const k in SECTIONS) {
   });
   bs.sort((p, q) => p.d - q.d);
   const walls = [...def.beams, ...def.pillars].map(x => x[0]);
-  secObs[k] = { beams: bs, turrets: def.turrets.map(([d, side]) => makeTurret(d, side, def.speed, def.fire || 1, walls)), orbs };
+  secObs[k] = { beams: bs, turrets: def.turrets.map(([d, side]) => makeTurret(d, side, def.speed, 1.25, walls)), orbs };
 }
 SEC = SECTIONS.P1;
 
@@ -2287,11 +2287,35 @@ function update(dt) {
 }
 
 const clock = new THREE.Clock();
+// ---- wingmen: after the approach they fly loosely behind the ship and weave (never ahead of it)
+let wingT = 0;
+const WING_FOLLOW = 4;                                 // how fast they close on their spot, per second: loose, not rigid
+function wingmenStep(dt) {
+  if (phase === 'approach') return;                    // the approach sets their positions
+  wingT += dt;
+  const active = !dead && !done && ['surface', 'dive', 'play', 'final', 'boss'].includes(phase);
+  for (const { g, w, i } of wings) {
+    if (!active) { g.visible = false; continue; }
+    const sw = w.sway;
+    const gx = shipX + w.off[0] + Math.sin(wingT * 0.9 * sw + i) * 0.9;           // weave side to side
+    const gy = shipY + w.off[1] + Math.sin(wingT * 1.3 * sw + i * 2) * 0.45;      // and up and down
+    const gz = Math.max(1.5, w.off[2] + Math.sin(wingT * 0.7 * sw + i * 3) * 0.8); // and in and out, never past the camera
+    if (!g.visible) g.position.set(gx, gy, gz);        // first frame in formation: appear at their spot
+    g.visible = true;
+    const k = 1 - Math.exp(-WING_FOLLOW * dt);
+    g.position.x += (gx - g.position.x) * k;
+    g.position.y += (gy - g.position.y) * k;
+    g.position.z += (gz - g.position.z) * k;
+    g.rotation.set(ship.rotation.x, 0, ship.rotation.z);
+    g.scale.setScalar(ship.scale.x * 0.85);
+  }
+}
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (started && !paused && !lossOn) {
     if (hitStopT > 0) hitStopT -= dt; else update(dt);
     fxUpdate(dt);
+    wingmenStep(dt);
   }
   if (lossOn) lossType(dt);
   renderer.render(scene, cam);
