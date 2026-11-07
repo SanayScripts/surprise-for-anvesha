@@ -1469,7 +1469,7 @@ const SECTIONS = {
   P3: { speed: 56, len: 1086, gapW: 2.8, lines: P3_LINES, next: 'FINAL', fire: 1.5,
         beams: [[60,'L'],[120,'R'],[180,'L'],[240,'R'],[450,'C'],[580,'U'],[700,'D'],[840,'R'],[900,'L'],[360,'R'],[960,'C']], pillars: [[520,'L'],[780,'C']],
         turrets: [[320,'L'],[320,'R'],[400,'L'],[480,'L'],[640,'R'],[720,'L']] },
-  FINAL: { speed: 36, len: 400, gapW: 3, lines: FINAL_LINES, next: null, beams: [], pillars: [], turrets: [] },
+  FINAL: { speed: 36, len: 400, gapW: 3, lines: FINAL_LINES, next: null, beams: [], pillars: [], turrets: [[270,'L'],[288,'R']], every: 1.0 },
   // the boss arena: open space. Her laser nets and bolts are the only obstacles.
   ARENA: { speed: 46, len: 0, gapW: 3.2, lines: [], next: null, fire: 1.6,
            beams: [], pillars: [], turrets: [] }
@@ -1500,7 +1500,7 @@ for (const k in SECTIONS) {
   });
   bs.sort((p, q) => p.d - q.d);
   const walls = [...def.beams, ...def.pillars].map(x => x[0]);
-  secObs[k] = { beams: bs, turrets: def.turrets.map(([d, side]) => makeTurret(d, side, def.speed, 1.25, walls)), orbs };
+  secObs[k] = { beams: bs, turrets: def.turrets.map(([d, side]) => makeTurret(d, side, def.speed, def.every || 1.25, walls)), orbs };
 }
 SEC = SECTIONS.P1;
 
@@ -1683,6 +1683,7 @@ function secondPass(fired) {
   if (torpedoes <= 0 && !calm) { dead = true; deathCount++; saveProgress(); showLoss(); return; }
   pending.push(...MISS_LINES);
   traveled = FIN.ventAt - FIN.redoAt;                              // short run-up: 6 s
+  for (const t of turrets) { t.towerHit = false; for (const sh of t.shots) { sh.launched = sh.hitDone = sh.announced = false; sh.bolt.visible = false; } }
   lockT = 0; wasAligned = false; lockT40 = false; lockT80 = false; lockDoneSnd = false;
   qIdx = FINAL_LINES.length;                                       // the scripted lines have played
   nowCued = false;
@@ -2038,6 +2039,29 @@ function dsStep(dt) {                                           // the Death Sta
   }
 }
 
+const GUN_FIRE_T = 1.0, GUN_CHARGE_T = 0.45;                 // each gun fires once a second; the glow shows it coming
+const guns = [];
+for (const sx of [-1, 1]) {
+  const grp = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.6, 2.4), towerMat);
+  grp.add(body); grp.position.set(sx * 6.5, -3.4, -30); grp.visible = false; scene.add(grp);
+  guns.push({ sx, grp, body, cd: sx < 0 ? 1.0 : 1.5, warned: false });   // staggered: a bolt every half second
+}
+function gunStep(dt) {
+  for (const g of guns) {
+    g.grp.visible = BOSS.state === 'fight' && !dead;
+    if (!g.grp.visible) continue;
+    g.cd -= dt;
+    const hot = g.cd < GUN_CHARGE_T;
+    g.body.material = hot ? towerHot : towerMat;
+    if (hot && !g.warned) { g.warned = true; chargeTone(); }
+    if (g.cd <= 0) {
+      g.cd += GUN_FIRE_T; g.warned = false;
+      spawnBossBolt(g.grp.position.x, g.grp.position.y, g.grp.position.z, shipX, shipY, boltMat);
+      SFX.zap();
+    }
+  }
+}
 function startBoss() {
   phase = 'boss';
   closeComm(); pending.length = 0;
@@ -2051,13 +2075,14 @@ function startBoss() {
   for (const b of bossBolts) { b.on = false; b.m.visible = false; }
   traveled = 0; shipX = shipY = tx = ty = 0; rollT = 0; rollCd = 0; inv = 0;
   radar.t = 0; radar.locked = false;
+  for (const g of guns) { g.cd = g.sx < 0 ? 1.0 : 1.5; g.warned = false; }
   pending.push(...BOSS_INTRO, POD_LINE);
   SFX.alarm();
 }
-function spawnBossBolt(sx, sy, sz, ax, ay) {
+function spawnBossBolt(sx, sy, sz, ax, ay, mat = bossBoltMat) {
   const b = bossBolts.find(q => !q.on);
   if (!b) return;
-  b.on = true; b.m.visible = true;
+  b.on = true; b.m.visible = true; b.m.material = mat;
   b.sx = sx; b.sy = sy; b.sz = sz; b.ax = ax; b.ay = ay; b.age = 0; b.T = Math.abs(sz) / 40;
 }
 function bossDamage() {
@@ -2177,6 +2202,7 @@ function bossUpdate(dt) {
       burstAt(BOSS.x, BOSS.y, BOSS.z, 0x7fe9ff, 40);
     }
   }
+  gunStep(dt);
   for (const l of lasers) {                           // player lasers home in gently on her
     if (!l.on) continue;
     l.z -= 90 * dt;
@@ -2313,7 +2339,7 @@ function update(dt) {
   }
 
   if (phase === 'play') { placeRings(); turretStep(dt); checkOrbs(); placeOrbs(dt); }
-  if (phase === 'final') finalStep(dt);
+  if (phase === 'final') { finalStep(dt); turretStep(dt); }
   if (phase === 'surface') surfaceStep(dt);
   for (const sc of scrollTex) sc.t.offset[sc.ax] = sc.dir * traveled / TILE_LEN;
 
