@@ -1326,7 +1326,7 @@ function diveUpdate(dt) {                           // 2 s dive: nose down, then
   if (diveT >= 2) startTrench();
 }
 
-// ---- barrel roll (Bible 4.4): Space or double-tap, 0.5 s, 1.5 s cooldown, deflects bolts only ----
+// ---- barrel roll (Bible 4.4): Space or double-tap, 0.5 s, 0.75 s cooldown, deflects bolts only ----
 let rollT = 0, rollCd = 0, rollDir = 1, rollHinted = false;
 const lastTap = { L: -9999, R: -9999 };
 function tryRoll() {
@@ -2068,7 +2068,7 @@ function bossUpdate(dt) {
   ship.visible = inv > 0 ? Math.floor(inv * 12) % 2 === 0 : true;
   if (rollT > 0) {
     rollT -= dt;
-    if (rollT <= 0) { rollT = 0; rollCd = 1.5; }
+    if (rollT <= 0) { rollT = 0; rollCd = 0.75; }
     else ship.rotation.z += (1 - rollT / 0.5) * Math.PI * 2 * rollDir;
   } else if (rollCd > 0) { rollCd -= dt; if (rollCd <= 0) SFX.ready(); }
   cam.position.set(shipX * 0.4, shipY * 0.4 + 1.2, 9);
@@ -2224,9 +2224,9 @@ function update(dt) {
   shipX += (tx - shipX) * 0.2;
   shipY += (ty - shipY) * 0.2;
   if ((phase === 'play' || phase === 'final') && !dead && !done && Math.abs(shipX) > 4.2 && inv <= 0) {
-    const side = Math.sign(shipX);                              // the wall: one heart, bounce back to the middle
+    const side = Math.sign(shipX);                              // the wall: a bump, bounce back to the middle, no damage
     shipX = side * 4.0; tx = side * 3.0;
-    hit();
+    SFX.deflect(); burstAt(shipX, shipY, 0, 0xffffff, 8);
   }
   ship.position.set(shipX, shipY, 0);
   ship.rotation.z = (tx - shipX) * -0.15;
@@ -2235,7 +2235,7 @@ function update(dt) {
 
   if (rollT > 0) {
     rollT -= dt;
-    if (rollT <= 0) { rollT = 0; rollCd = 1.5; }
+    if (rollT <= 0) { rollT = 0; rollCd = 0.75; }
     else ship.rotation.z += (1 - rollT / 0.5) * Math.PI * 2 * rollDir;
   } else if (rollCd > 0) { rollCd -= dt; if (rollCd <= 0) SFX.ready(); }
 
