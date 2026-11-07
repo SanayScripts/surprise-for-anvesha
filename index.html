@@ -2336,7 +2336,7 @@ function bossUpdate(dt) {
   const radarTxt = BOSS.state !== 'fight' ? '' : !radar.seen && !radar.locked ? 'LOCK PAUSED: NO LINE OF SIGHT'
     : radar.locked ? 'LOCKED · SPACE: MISSILE'
     : keys.Space ? `LOCKING ${Math.round(radar.t / LOCK_T * 100)}%` : 'HOLD SPACE: LOCK';
-  hud.textContent = `HEARTS ${'♥'.repeat(h)}${'·'.repeat(CFG.hearts - h)}   DARK LADY ${'■'.repeat(Math.max(BOSS.hp, 0))}${'·'.repeat(Math.max(BOSS.max - BOSS.hp, 0))}   ${radarTxt}${BOSS.state === 'fight' ? `   HYPERSPACE ${Math.floor(BOSS.charge / HYPER_T * 100)}%` : BOSS.state === 'jump' ? '   SHE IS JUMPING' : ''}${god ? '   INVINCIBLE' : ''}`;
+  hud.textContent = `HEARTS ${'♥'.repeat(h)}${'·'.repeat(CFG.hearts - h)}   DARK LADY ${'■'.repeat(Math.max(BOSS.hp, 0))}${'·'.repeat(Math.max(BOSS.max - BOSS.hp, 0))}   ${radarTxt}${BOSS.state === 'fight' ? `   HYPERSPACE ${Math.floor(BOSS.charge / HYPER_T * 100)}%` : BOSS.state === 'jump' ? '   SHE IS JUMPING' : ''}`;
 }
 function startRun() {
   lockToneStop();                                 // a fresh run: all three lives, back to the surface
@@ -2441,7 +2441,7 @@ function update(dt) {
   const h = Math.max(hearts, 0);
   const lenNow = phase === 'surface' ? SURF.len : SEC.len;
   const rollTxt = rollT > 0 ? 'ROLL' : rollCd > 0 ? 'ROLL ' + rollCd.toFixed(1) : 'ROLL ready';
-  hud.textContent = `${phase === 'final' ? `TORPEDOES ${'▮'.repeat(torpedoes)}${'·'.repeat(3 - torpedoes)}` : `HEARTS ${'♥'.repeat(h)}${'·'.repeat(CFG.hearts - h)}`}   ${phase === 'surface' ? 'SURFACE' : curSec} ${Math.floor(traveled)}m / ${lenNow}m   ${shieldT > 0 ? 'SHIELD ' + shieldT.toFixed(1) + '   ' : ''}${rollTxt}${god ? 'INVINCIBLE   ' : ''}`;
+  hud.textContent = `${phase === 'final' ? `TORPEDOES ${'▮'.repeat(torpedoes)}${'·'.repeat(3 - torpedoes)}` : `HEARTS ${'♥'.repeat(h)}${'·'.repeat(CFG.hearts - h)}`}   ${phase === 'surface' ? 'SURFACE' : curSec} ${Math.floor(traveled)}m / ${lenNow}m   ${shieldT > 0 ? 'SHIELD ' + shieldT.toFixed(1) + '   ' : ''}${rollTxt}`;
 }
 
 const clock = new THREE.Clock();
