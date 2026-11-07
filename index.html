@@ -116,7 +116,7 @@
 <div class="keys">
 <div><b>Arrows or WASD</b><span>steer the ship</span></div>
 <div><b>Space</b><span>barrel roll (deflects turret bolts)</span></div>
-<div><b>Space, in the final run-up</b><span>fire the torpedo at the vent</span></div>
+<div><b>Space, in the final run-up</b><span>fire the torpedo through the vent hole, as the vent passes you</span></div>
 <div><b>Enter / Space</b><span>skip the crawl or the approach (after 4 s); Enter advances a line; Space three times skips a cutscene</span></div>
 <div><b>Space (boss fight)</b><span>hold 3 s to lock on, tap to fire a missile. Lock needs a clear view.</span></div>
 <div><b>Esc</b><span>pause: resume, calm mode, restart, mute, test mode</span></div>
@@ -1488,7 +1488,7 @@ for (const k in SECTIONS) {
     });
     grp.visible = false;
     scene.add(grp);
-    bs.push({ d, gx, gy, pieces: ps, grp, meshes, checked: false });
+    bs.push({ d, gx, gy, gh, pieces: ps, grp, meshes, checked: false });
   };
   for (const [d, g] of def.beams) mkBeam(d, g, CFG.gapH);
   for (const [d, g] of def.pillars) mkBeam(d, g, 10);          // pillar pair: two full-height columns with a gap
@@ -1610,13 +1610,13 @@ function placeOrbs(dt) {                              // the orb meshes were nev
 function hideCard() { cardEl.style.display = 'none'; }
 
 // ---- final shot (Bible 4.6 / Final): align the vent, hold the lock, fire ----
-const FIN = { ventAt: 360, redoAt: 216, ventY: -2.6, R: 1.5 };
+const FIN = { ventAt: 360, redoAt: 216, ventY: -2.6, hole: 0.8, win: 4 };   // the one point: fire inside the hole, within 4 m of the vent
 const ventGrp = new THREE.Group();
 {
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.18, 4, 16),
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.12, 4, 16),
     new THREE.MeshBasicMaterial({ color: 0x7dff7d, fog: false }));
   ring.rotation.x = Math.PI / 2;
-  const hole = new THREE.Mesh(new THREE.CircleGeometry(1.2, 10), new THREE.MeshBasicMaterial({ color: 0x0a2010, fog: false }));
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(0.72, 10), new THREE.MeshBasicMaterial({ color: 0x0a2010, fog: false }));
   hole.rotation.x = -Math.PI / 2;
   ring.renderOrder = hole.renderOrder = -1; ring.material.depthWrite = hole.material.depthWrite = false;
   ventGrp.add(ring, hole);
@@ -1634,30 +1634,26 @@ function startFinalState() {
 }
 function finalStep(dt) {
   if (dead) return;
-  const wasBefore = wasAligned;
-  const aligned = !dead && Math.hypot(shipX, shipY - FIN.ventY) < FIN.R;
-  if (wasBefore && !aligned) SFX.lockLost();
-  if (aligned && traveled < FIN.ventAt + 10) lockT = Math.min(0.8, lockT + dt);
-  if (!aligned && wasAligned) lockT *= 0.5;                         // leaving the vent resets half the progress
+  const aligned = Math.hypot(shipX, shipY - FIN.ventY) < FIN.hole;   // inside the hole
+  if (aligned && !wasAligned) SFX.lockDone();
+  if (!aligned && wasAligned) SFX.lockLost();
   wasAligned = aligned;
-  if (lockT >= 0.8) { if (!lockDoneSnd) { lockDoneSnd = true; SFX.lockDone(); } lockToneStop(); }
-  else if (aligned) lockToneSet(lockT / 0.8);
-  else lockToneStop();
-  if (!lockT40 && lockT >= 0.32) { lockT40 = true; pending.push(LOCK_LINES[0]); SFX.lockTick(); }
-  if (!lockT80 && lockT >= 0.64) { lockT80 = true; pending.push(LOCK_LINES[1]); SFX.lockTick(); }
+  lockT = aligned ? 0.8 : 0;                                          // the reticle is full only inside the hole
+  if (aligned) lockToneSet(1); else lockToneStop();
   // vent: grows as it comes, hidden once it has passed
   ventGrp.position.set(0, FIN.ventY, traveled - FIN.ventAt);
   const grow = mix(0.2, 1, clamp(traveled / FIN.ventAt, 0, 1));
   ventGrp.scale.setScalar(grow);
-  ventGrp.visible = traveled < FIN.ventAt + 10;
+  ventGrp.visible = traveled < FIN.ventAt + FIN.win + 2;
   reticleEl.style.background = `conic-gradient(#7dff7d ${lockT / 0.8 * 360}deg, transparent 0)`;
-  // the vent has passed without a shot: second pass
-  if (traveled >= FIN.ventAt + 10) secondPass(false);
+  // the window has closed with no shot: the torpedo is lost and the segment repeats
+  if (traveled > FIN.ventAt + FIN.win) secondPass(false);
 }
 function fire() {
   if (phase !== 'final' || dead) return;
-  if (lockT >= 0.8 && traveled <= FIN.ventAt + 10) winShot();
-  else SFX.dud();                                    // not locked yet: nothing happens, no torpedo, no heart
+  if (Math.abs(traveled - FIN.ventAt) > FIN.win) { SFX.dud(); return; }   // too early or too late for the window: nothing happens, no cost
+  if (Math.hypot(shipX, shipY - FIN.ventY) < FIN.hole) winShot();         // in the hole, in the window: hit
+  else secondPass(true);                                                  // outside the hole: the torpedo is lost, the segment repeats
 }
 function secondPass(fired) {
   lockToneStop();
@@ -2307,27 +2303,47 @@ function update(dt) {
 }
 
 const clock = new THREE.Clock();
-// ---- wingmen: after the approach they fly loosely behind the ship and weave (never ahead of it)
+// ---- wingmen: fly loosely behind the ship and weave. At a wall they string out in a line behind the ship and go through the gap, then fall back abreast
 let wingT = 0;
 const WING_FOLLOW = 4;                                 // how fast they close on their spot, per second: loose, not rigid
+const WING_THREAD = 10;                                // how fast they snap into the line for a wall
+const WING_LOOK = 18;                                  // a wall this far ahead makes them form the line
+const WING_Z0 = 1.5, WING_LINE = 1.4;                  // the line: nearest wingman 1.5 m behind the ship, 1.4 m between each
 function wingmenStep(dt) {
   if (phase === 'approach') return;                    // the approach sets their positions
   wingT += dt;
   const active = !dead && !done && ['surface', 'dive', 'play', 'final', 'boss'].includes(phase);
+  // the wall nearest the wingmen's depth (walls only exist in the trench run)
+  const zLast = WING_Z0 + (WING.length - 1) * WING_LINE + 1;
+  let wall = null;
+  if (active && phase === 'play') for (const b of beams) {
+    const z = b.grp.position.z;
+    if (z < -WING_LOOK || z > zLast) continue;
+    if (!wall || z > wall.grp.position.z) wall = b;
+  }
   for (const { g, w, i } of wings) {
     if (!active) { g.visible = false; continue; }
-    const sw = w.sway;
-    const gx = shipX + w.off[0] + Math.sin(wingT * 0.9 * sw + i) * 0.9;           // weave side to side
-    const gy = shipY + w.off[1] + Math.sin(wingT * 1.3 * sw + i * 2) * 0.45;      // and up and down
-    const gz = Math.max(1.5, w.off[2] + Math.sin(wingT * 0.7 * sw + i * 3) * 0.8); // and in and out, never past the camera
-    if (!g.visible) g.position.set(gx, gy, gz);        // first frame in formation: appear at their spot
+    let tx, ty, tz, rate = WING_FOLLOW;
+    if (wall) {                                        // through the gap, one behind another, staying inside it
+      const hh = wall.gh === 10 ? 10 : CFG.gapH / 2;
+      tx = clamp(shipX, wall.gx - SEC.gapW / 2 + 0.5, wall.gx + SEC.gapW / 2 - 0.5);
+      ty = clamp(shipY, wall.gy - hh + 0.5, wall.gy + hh - 0.5);
+      tz = WING_Z0 + i * WING_LINE;
+      rate = WING_THREAD;
+    } else {                                           // formation: weave behind the ship
+      const sw = w.sway;
+      tx = shipX + w.off[0] + Math.sin(wingT * 0.9 * sw + i) * 0.9;           // weave side to side
+      ty = shipY + w.off[1] + Math.sin(wingT * 1.3 * sw + i * 2) * 0.45;      // and up and down
+      tz = Math.max(1.5, w.off[2] + Math.sin(wingT * 0.7 * sw + i * 3) * 0.8); // and in and out, never past the camera
+    }
+    if (!g.visible) g.position.set(tx, ty, tz);        // first frame: appear at their spot
     g.visible = true;
-    const k = 1 - Math.exp(-WING_FOLLOW * dt);
-    g.position.x += (gx - g.position.x) * k;
-    g.position.y += (gy - g.position.y) * k;
-    g.position.z += (gz - g.position.z) * k;
+    const k = 1 - Math.exp(-rate * dt);
+    g.position.x += (tx - g.position.x) * k;
+    g.position.y += (ty - g.position.y) * k;
+    g.position.z += (tz - g.position.z) * k;
     g.rotation.set(ship.rotation.x, 0, ship.rotation.z);
-    const sc = ship.scale.x * 0.45;                     // smaller: present, but never filling the screen
+    const sc = ship.scale.x * 0.45;
     g.scale.setScalar(g.scale.x + (sc - g.scale.x) * k);
   }
 }
