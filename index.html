@@ -884,9 +884,9 @@ addEventListener('keydown', e => {
     else if (phase === 'approach' && approachT >= CFG.skipAfter) endApproach();
     return;
   }
-  if (e.code === 'Space' && !e.repeat && !paused && !cur) {    // Space skips the crawl or the approach too
-    if (phase === 'crawl' && crawlT >= CFG.skipAfter) { e.preventDefault(); endCrawl(true); return; }
-    if (phase === 'approach' && approachT >= CFG.skipAfter) { e.preventDefault(); endApproach(); return; }
+  if (e.code === 'Space' && !e.repeat && !paused) {            // Space skips the crawl or the approach, even mid-dialogue
+    if (phase === 'crawl' && crawlT >= CFG.skipAfter) { e.preventDefault(); pending.length = 0; closeComm(); endCrawl(true); return; }
+    if (phase === 'approach' && approachT >= CFG.skipAfter) { e.preventDefault(); pending.length = 0; endApproach(); return; }
   }
   if (e.code === 'Space') { e.preventDefault(); if (phase === 'final') fire(); else if (phase === 'boss') { if (!e.repeat) bossSpace(); } else if (phase !== 'approach' && phase !== 'title') tryRoll(); }
   if (e.code === 'Escape' && started && !dead && phase !== 'title' && phase !== 'win') { togglePause(); return; }
@@ -902,6 +902,16 @@ addEventListener('keydown', e => {
   }
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
+// menus stay clickable (the flight itself is keys only)
+document.getElementById('startBtn').addEventListener('click', () => { if (!started) beginGame(); });
+document.getElementById('lossBtn').addEventListener('click', () => { if (lossOn) lossRetry(); });
+document.getElementById('winBtn').addEventListener('click', () => { if (document.getElementById('win').style.display === 'flex') winReplay(); });
+document.getElementById('pResume').addEventListener('click', () => { if (paused) togglePause(); });
+document.getElementById('pCalm').addEventListener('click', () => { if (paused) toggleCalm(); });
+document.getElementById('pRestart').addEventListener('click', () => { if (paused) restartFromPause(); });
+document.getElementById('pMute').addEventListener('click', () => { if (paused) toggleMute(); });
+document.getElementById('pTest').addEventListener('click', () => { if (paused) toggleTestMode(); });
+document.querySelectorAll('[data-jump]').forEach(el => el.addEventListener('click', () => { if (paused) jumpStage(el.dataset.jump); }));
 function beginGame() {
   actx = new (window.AudioContext || window.webkitAudioContext)();
   started = true;
@@ -1269,7 +1279,7 @@ scene.add(surfGroup);
 
 function surfaceStep(dt) {
   const flashLen = SURF.flashSec * SURF.speed;
-  const win = 1.2 + (SURF.speed + SURF.boltSpeed) * dt;      // wide enough that a slow frame can't skip a bolt
+  const win = 0.1 + (SURF.speed + SURF.boltSpeed) * dt * 0.5;  // half a frame of travel: catches the crossing, no earlier
   for (const e of emitters) {
     e.tower.position.z = traveled - e.pe;
     e.tower.material = towerMat;
@@ -1286,7 +1296,7 @@ function surfaceStep(dt) {
       if (traveled >= b.dl && !b.hitDone && Math.abs(a) <= win) {
         b.hitDone = true;
         if (rollT > 0) { b.bolt.visible = false; SFX.deflect(); burstAt(shipX, shipY, 0, 0x7fe9ff, 12); }                       // barrel roll deflects bolts
-        else if (inv <= 0 && !dead && Math.abs(shipX - b.x) < 1.2 && Math.abs(shipY) < 1.0) hit();
+        else if (inv <= 0 && !dead && Math.abs(shipX - b.x) < 0.8 && Math.abs(shipY) < 0.6) hit();
       }
     }
     if (!e.towerHit && Math.abs(traveled - e.pe) < 2 && Math.abs(shipX - e.x) < 1.8 && Math.abs(shipY + 1.5) < 2.5 && inv <= 0 && !dead) {
@@ -1397,7 +1407,7 @@ function makeTurret(d, side, speed, every, walls = []) {
 
 function turretStep(dt) {
   const chargeLen = TUR.charge * SEC.speed;
-  const win = 1.2 + (SEC.speed + TUR.boltSpeed) * dt;
+  const win = 0.1 + (SEC.speed + TUR.boltSpeed) * dt * 0.5;    // half a frame of travel: catches the crossing, no earlier
   for (const t of turrets) {
     t.grp.position.z = traveled - t.pe;
     let hot = false;
@@ -1422,7 +1432,7 @@ function turretStep(dt) {
       if (!s.hitDone && Math.abs(a) <= win) {
         s.hitDone = true;
         if (rollT > 0) { s.bolt.visible = false; SFX.deflect(); burstAt(shipX, shipY, 0, 0x7fe9ff, 12); }                        // deflected
-        else if (inv <= 0 && !dead && Math.abs(shipX - s.ax) < 1.2 && Math.abs(shipY - s.ay) < 1.0) hit();
+        else if (inv <= 0 && !dead && Math.abs(shipX - s.ax) < 0.8 && Math.abs(shipY - s.ay) < 0.6) hit();
       }
     }
     t.body.material = hot ? towerHot : towerMat;
