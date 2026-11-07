@@ -168,9 +168,9 @@ const SPEAKERS = {                                  // one distinct 8-bit voice 
   Eliza:    { name: 'ELIZA',           color: '#f5c2ff', wave: 'sine',     f: 740, pat: [1, 1.2, 1.5],     vol: 0.05 },
   Armand:   { name: 'ARMAND',          color: '#d9c6a0', wave: 'square',   f: 220, pat: [1, 1.5],          vol: 0.12 },
   DarkLady: { name: 'THE DARK LADY',   color: '#b3262e', wave: 'sawtooth', f: 196, pat: [1, 0.5],          vol: 0.07 },
-  Annabeth: { name: 'ANNABETH (BASE OPS)', color: '#c8d0e0', wave: 'sine', f: 520, pat: [1, 1.1],        vol: 0.05 },
+  Annabeth: { name: 'ANNABETH', color: '#c8d0e0', wave: 'sine', f: 520, pat: [1, 1.1],        vol: 0.05 },
   Sokka:    { name: 'SOKKA (HANGAR)',  color: '#8fb8d8', wave: 'triangle', f: 392, pat: [1, 1.33, 1.5],    vol: 0.08 },
-  Percy:    { name: 'PERCY (HANGAR)',  color: '#8fb8d8', wave: 'pulse',    f: 262, pat: [1, 0.8],          vol: 0.08 },
+  Percy:    { name: 'PERCY',  color: '#8fb8d8', wave: 'pulse',    f: 262, pat: [1, 0.8],          vol: 0.08 },
   Iroh:     { name: 'IROH (BASE RADIO)', color: '#9ccf8a', wave: 'sine',   f: 147, pat: [1, 0.8],          vol: 0.12 },
   Everyone: { name: 'ALL SQUADRON',    color: '#ffe27a', wave: 'square',   f: 440, pat: [1, 1.5],          vol: 0.05 }
 };
@@ -742,12 +742,16 @@ function say(text, sec) {
 }
 
 // ---- comm box ----
+const ICONS = {                                       // no sprite for these two: a trident and a cap
+  Percy: `<svg viewBox="0 0 64 64" width="100%" height="100%" shape-rendering="crispEdges"><rect width="64" height="64" fill="#0a1020"/><rect x="30" y="18" width="4" height="40" fill="#8fb8d8"/><rect x="16" y="18" width="32" height="4" fill="#8fb8d8"/><rect x="16" y="4" width="4" height="16" fill="#8fb8d8"/><rect x="30" y="2" width="4" height="18" fill="#8fb8d8"/><rect x="44" y="4" width="4" height="16" fill="#8fb8d8"/><rect x="26" y="44" width="12" height="3" fill="#ffd27a"/></svg>`,
+  Annabeth: `<svg viewBox="0 0 64 64" width="100%" height="100%"><rect width="64" height="64" fill="#0a1020"/><path d="M12 40 C12 22 22 16 32 16 C42 16 52 22 52 40 Z" fill="#0c2340"/><path d="M8 40 L56 40 L60 48 L4 48 Z" fill="#06142a"/><circle cx="32" cy="17" r="2" fill="#0c2340"/><text x="32" y="35" text-anchor="middle" font-family="Georgia, serif" font-weight="bold" font-size="13" fill="#ffffff">NY</text></svg>`
+};
 function openComm(line) {
   const spk = SPEAKERS[line.who];
   cur = { who: line.who, text: line.text, shown: 0, acc: 0, hold: CFG.holdSec };
   if (line.who === 'DarkLady') dlSeen = true;
   const spr = SPRITES[line.who];
-  portraitEl.innerHTML = spr ? `<img src="${spr}" alt="">`
+  portraitEl.innerHTML = ICONS[line.who] ? ICONS[line.who] : spr ? `<img src="${spr}" alt="">`
     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:${spk.color};color:#000;font-size:56px;font-weight:bold">${spk.name[0]}</div>`;
   speakerEl.style.color = spk.color;
   speakerEl.textContent = spk.name;
@@ -1463,12 +1467,22 @@ function turretStep(dt) {
         chargeTone();
         if (SEC.rollHint && !rollHinted) { rollHinted = true; say('SHIFT: barrel roll deflects bolts', 3.5); }
       }
-      if (traveled >= s.dl && !s.launched) { s.launched = true; s.ax = clamp(shipX + (tx - shipX) * 2, -4.5, 4.5); s.ay = shipY; s.bolt.scale.setScalar(1.5); SFX.zap(); }
+      if (traveled >= s.dl && !s.launched) { s.launched = true; s.prevZ = undefined; s.ax = clamp(shipX + (tx - shipX) * 2, -4.5, 4.5); s.ay = shipY; s.bolt.scale.setScalar(1.5); SFX.zap(); }
       if (!s.launched) continue;
       const a = t.pe - traveled - TUR.boltSpeed * (traveled - s.dl) / SEC.speed;               // metres ahead of the ship
       const u = Math.min(1, Math.max(0, (traveled - s.dl) / (s.dk - s.dl)));
       s.bolt.visible = !s.hitDone ? a > -4 : s.bolt.visible && a > -4;
       s.bolt.position.set(t.sx * 4.5 + (s.ax - t.sx * 4.5) * u, s.ay * u, TUR.boltSpeed * (traveled - s.dl) / SEC.speed);
+      const zNow = t.grp.position.z + s.bolt.position.z;            // where the bolt is along the trench
+      if (!s.hitDone && s.prevZ !== undefined) for (const b of beams) {   // a partition in its path stops it: only the gap lets it through
+        const bz = b.grp.position.z;
+        if ((s.prevZ - bz) * (zNow - bz) > 0) continue;              // not crossing this partition now
+        const bx = s.bolt.position.x, by = s.bolt.position.y;
+        if (b.pieces.some(p => bx > p.x0 - BOLT_HALF && bx < p.x1 + BOLT_HALF && by > p.y0 - BOLT_HALF && by < p.y1 + BOLT_HALF)) {
+          s.hitDone = true; s.bolt.visible = false; burstAt(bx, by, zNow, 0xff7040, 10); SFX.deflect(); break;
+        }
+      }
+      s.prevZ = zNow;
       if (!s.hitDone && Math.abs(a) <= win) {
         s.hitDone = true;
         if (rollT > 0) { s.bolt.visible = false; SFX.deflect(); burstAt(shipX, shipY, 0, 0x7fe9ff, 12); }                        // deflected
@@ -1718,6 +1732,7 @@ function secondPass(fired) {
 }
 function winShot() {
   phase = 'win';
+  lockToneStop();                                     // the lock tone ends with the hit
   SFX.laserFinal(); setTimeout(SFX.boom, 350); setTimeout(SFX.fanfare, 800);
   shake(0.8, 1.2); burstAt(0, FIN.ventY, ventGrp.position.z, 0xffffff, 60); burstAt(0, FIN.ventY, ventGrp.position.z, 0xffd27a, 40);
   pending.length = 0;
@@ -1725,15 +1740,36 @@ function winShot() {
   const fl = document.getElementById('flash');
   fl.style.opacity = 1; setTimeout(() => { fl.style.opacity = 0; }, 80);
   closeComm();
-  winT = 0; winShown = false;
+  winT = 0; winShown = false; winBoomT = 0; winHole.visible = false;
   pending.push(...WIN_PART1);
   for (const b of beams) b.grp.visible = false;
 }
-let winT = 0, winShown = false;
-function winUpdate(dt) {                              // part one of the win, then the Dark Lady makes a run for it
+let winT = 0, winShown = false, winBoomT = 0;
+const winHole = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: 0x050008, fog: false }));
+winHole.visible = false; scene.add(winHole);
+function winUpdate(dt) {                              // the cutscene: the star breaks open, she escapes through the hole, the squadron follows her
   winT += dt;
   commUpdate(dt);
-  if (winT > 1 && !cur && pending.length === 0) startBoss();
+  if (winT >= winBoomT) {                             // explosions rock the star, more often as it goes on
+    winBoomT = winT + Math.max(0.15, 0.5 - winT * 0.05);
+    burstAt((Math.random() - 0.5) * 9, (Math.random() - 0.5) * 5, ventGrp.position.z + (Math.random() - 0.5) * 16, Math.random() < 0.5 ? 0xffffff : 0xffb040, 30);
+    shake(0.35, 0.3); SFX.boom();
+  }
+  const holeZ = ventGrp.position.z, hk = clamp((winT - 1.5) / 1.2, 0, 1);
+  winHole.visible = winT > 1.5;                       // the hole opens where the vent was
+  winHole.position.set(0, FIN.ventY, holeZ);
+  winHole.scale.setScalar(0.2 + 3.8 * hk);
+  if (winT > 2.7) {                                   // she flies out of the hole, past the camera; the squadron follows her
+    const k = clamp((winT - 2.7) / 3.2, 0, 1);
+    bossGrp.visible = true;
+    bossGrp.position.set(-12 * k, FIN.ventY + 5 * k, holeZ + 30 * k);
+    for (const { g, i } of wings) {
+      const side = i % 2 ? 1 : -1, row = Math.floor(i / 2);
+      g.visible = true;
+      g.position.set(bossGrp.position.x + side * (3 + row), bossGrp.position.y - 0.6 - row * 0.8, bossGrp.position.z - 5 - row * 2.5);
+    }
+  }
+  if (winT > 6 && !cur && pending.length === 0) { winHole.visible = false; startBoss(); }
 }
 function rewardUpdate(dt) {                           // after the boss: the heart, the last lines, then the message
   commUpdate(dt);
@@ -1889,9 +1925,8 @@ function arenaSetup() {
   for (const b of beams) { b.checked = false; b.warned = false; b.grp.position.z = -b.d; b.grp.visible = true; }
   for (const t of turrets) { t.towerHit = false; t.grp.visible = true; for (const s of t.shots) { s.launched = s.hitDone = s.announced = false; s.bolt.visible = false; } }
   for (const mi of missiles) { mi.on = false; mi.m.visible = false; }
-  ds.visible = true; ds.position.set(30, 34, -320);
-  dsBoom.visible = true; dsBoom.position.copy(ds.position); dsBoom.scale.setScalar(0.6);
-  for (const c of dsChunks) { c.m.visible = true; c.m.position.copy(ds.position); }
+  ds.visible = false; dsBoom.visible = false;                  // the Death Star is seen only in the start cutscene: the arena is empty sky
+  for (const c of dsChunks) c.m.visible = false;
   dsNextBurst = 0;
 }
 function arenaHide() { netsClear(); }
@@ -2068,11 +2103,20 @@ function dsStep(dt) {                                           // the Death Sta
 }
 
 const GUN_FIRE_T = 1.0, GUN_CHARGE_T = 0.45;                 // each gun fires once a second; the glow shows it coming
+const gunHullMat = new THREE.MeshPhongMaterial({ color: 0x4a1417, flatShading: true });
+const gunTrimMat = new THREE.MeshPhongMaterial({ color: 0xb3262e, flatShading: true });
 const guns = [];
 for (const sx of [-1, 1]) {
   const grp = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.6, 2.4), towerMat);
-  grp.add(body); grp.position.set(sx * 6.5, -3.4, -30); grp.visible = false; scene.add(grp);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.8, 2.6), gunHullMat);     // a hull block, like her jet's
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.3, 2.7), gunTrimMat);      // red trim along the top
+  const fins = [-1, 1].map(f => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.2, 1.8), gunHullMat); m.position.x = f * 1.35; return m; });
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 2.4, 8), gunTrimMat);
+  barrel.rotation.x = Math.PI / 2; barrel.position.z = 2.0;                           // the barrel points at the ship
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff4a4a, fog: false }));
+  lamp.position.z = 3.2;
+  grp.add(body, trim, ...fins, barrel, lamp);
+  grp.position.set(sx * 6.5, -3.4, -30); grp.visible = false; scene.add(grp);
   guns.push({ sx, grp, body, cd: sx < 0 ? 1.0 : 1.5, warned: false });   // staggered: a bolt every half second
 }
 function gunStep(dt) {
@@ -2081,7 +2125,7 @@ function gunStep(dt) {
     if (!g.grp.visible) continue;
     g.cd -= dt;
     const hot = g.cd < GUN_CHARGE_T;
-    g.body.material = hot ? towerHot : towerMat;
+    g.body.material = hot ? towerHot : gunHullMat;
     if (hot && !g.warned) { g.warned = true; chargeTone(); }
     if (g.cd <= 0) {
       g.cd += GUN_FIRE_T; g.warned = false;
@@ -2092,6 +2136,7 @@ function gunStep(dt) {
 }
 function startBoss() {
   phase = 'boss';
+  lockToneStop();
   closeComm(); pending.length = 0;
   arenaSetup();
   reticleEl.style.display = 'none';
@@ -2193,7 +2238,6 @@ function bossUpdate(dt) {
   for (const sc of scrollTex) sc.t.offset[sc.ax] = sc.dir * traveled / TILE_LEN;
   if (BOSS.flashT > 0) BOSS.flashT -= dt;
   const angry = BOSS.hp <= BOSS.max / 2;
-  dsStep(dt);
   if (BOSS.state === 'fight') { netStep(dt); radarStep(dt); }
   else { radar.locked = false; reticleEl.style.display = 'none'; }
   missileStep(dt);
@@ -2284,7 +2328,8 @@ function bossUpdate(dt) {
     : keys.Space ? `LOCKING ${Math.round(radar.t / LOCK_T * 100)}%` : 'HOLD SPACE: LOCK';
   hud.textContent = `HEARTS ${'♥'.repeat(h)}${'·'.repeat(CFG.hearts - h)}   DARK LADY ${'■'.repeat(Math.max(BOSS.hp, 0))}${'·'.repeat(Math.max(BOSS.max - BOSS.hp, 0))}   ${radarTxt}${BOSS.state === 'fight' ? `   HYPERSPACE ${Math.floor(BOSS.charge / HYPER_T * 100)}%` : BOSS.state === 'jump' ? '   SHE IS JUMPING' : ''}${god ? '   INVINCIBLE' : ''}`;
 }
-function startRun() {                                 // a fresh run: all three lives, back to the surface
+function startRun() {
+  lockToneStop();                                 // a fresh run: all three lives, back to the surface
   dead = false; lossOn = false;
   lossEl.style.display = 'none';
   document.getElementById('lossTitle').style.display = 'none';
@@ -2398,6 +2443,7 @@ const WING_LOOK = 18;                                  // a wall this far ahead 
 const WING_Z0 = 1.5, WING_LINE = 1.4;                  // the line: nearest wingman 1.5 m behind the ship, 1.4 m between each
 function wingmenStep(dt) {
   if (phase === 'approach') return;                    // the approach sets their positions
+  if (phase === 'win') return;                         // the win cutscene places them
   wingT += dt;
   const active = !dead && !done && ['surface', 'dive', 'play', 'final', 'boss'].includes(phase);
   // the wall nearest the wingmen's depth (walls only exist in the trench run)
