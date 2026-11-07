@@ -427,6 +427,7 @@ const ds = new THREE.Group();
   ds.add(sphere, trenchLine, dish);
 }
 ds.position.set(DS.x, DS.y0, DS.z0);
+ds.visible = false;                                  // shown only from far out, in the approach
 scene.add(ds);
 
 // one 32x32 Death Star sprite, repeated: plates, seams, horizontal pipe, vertical conduit, light strips
@@ -1490,6 +1491,8 @@ SEC = SECTIONS.P1;
 function queueIdle() { return !cur && pending.length === 0 && qIdx >= queue.length; }
 function startSection(k) {
   curSec = k; SEC = SECTIONS[k];
+  // we are on the Death Star in the trench and the final run-up: its sphere is never shown here
+  ds.visible = false; dsBoom.visible = false; for (const c of dsChunks) c.m.visible = false;
   if (k === 'FINAL') SFX.alarm(); else SFX.stinger();
   beams.length = 0; beams.push(...secObs[k].beams);
   turrets.length = 0; turrets.push(...secObs[k].turrets);
